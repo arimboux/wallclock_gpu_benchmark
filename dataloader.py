@@ -48,7 +48,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def get_dataloaders():
+def get_dataloaders(cfg):
 
     train = CocoDetection('/data/datasets/coco/images/train2017', 
                                     '/data/datasets/coco/annotations/instances_train2017.json',
@@ -61,17 +61,17 @@ def get_dataloaders():
     train = _coco_remove_images_without_annotations(train)
     val = _coco_remove_images_without_annotations(val)
 
-    train_batch_size = 4
+
     train_dataloader = torch.utils.data.DataLoader(train,
-                                            batch_size=train_batch_size,
+                                            batch_size=cfg.batch_size,
                                             shuffle=True,
-                                            num_workers=4,
+                                            num_workers=cfg.workers,
                                             collate_fn=collate_fn)
 
     val_dataloader = torch.utils.data.DataLoader(val,
-                                            batch_size=train_batch_size,
-                                            shuffle=True,
-                                            num_workers=4,
+                                            batch_size=cfg.batch_size,
+                                            shuffle=False,
+                                            num_workers=cfg.workers,
                                             collate_fn=collate_fn)
 
 

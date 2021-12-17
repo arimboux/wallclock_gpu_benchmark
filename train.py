@@ -1,4 +1,4 @@
-import argparse
+import hydra
 import math
 import torch
 import torchvision
@@ -25,15 +25,18 @@ def get_targets(annot):
     return out
 
 
-def main(args):
+@hydra.main(config_path="conf", config_name="config")
+def main(cfg):
     
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn()
-    train_loader, val_loader = get_dataloaders()
+    train_loader, val_loader = get_dataloaders(cfg)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-4, weight_decay=0.)
     
     if torch.cuda.is_available():
         model = model.cuda()
+
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.fp16)
 
     model.train()
     for x, annot in tqdm.tqdm(train_loader):
@@ -45,8 +48,10 @@ def main(args):
             target = [{k: v.cuda(non_blocking=True) for k, v in t.items()}
                     for t in target]
 
-        #  Forward input and target
-        loss_dict = model(x, target)
+        with torch.cuda.amp.autocast(enabled=cfg.fp16):
+            #  Forward input and target
+            loss_dict = model(x, target)
+        
         # Reduce the loss (objectness, rpn_box_reg, classifier, box_reg)
         batch_loss = sum(loss for loss in loss_dict.values()
                         if not torch.isnan(loss) and loss != float("Inf"))
@@ -54,9 +59,10 @@ def main(args):
         # Check for non-defined or exploding losses
         if (not math.isnan(batch_loss.item())) and (not math.isinf(batch_loss.item())):
             # Backprop
-            optimizer.zero_grad()
-            batch_loss.backward()
-            optimizer.step()
+            optimizer.zero_grad()            
+            scaler.scale(batch_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
     model.eval()
     for x, target in val_loader:
@@ -71,8 +77,4 @@ def main(args):
 
 
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-
-    args = parser.parse_args()
-    main(args)
+    main()
