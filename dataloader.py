@@ -52,7 +52,7 @@ def get_dataloaders(cfg):
 
     train = CocoDetection('/data/datasets/coco/images/train2017', 
                                     '/data/datasets/coco/annotations/instances_train2017.json',
-                                    transform=T.ToTensor())
+                                    transform=T.Compose([T.Resize((600, 600)), T.ToTensor()]))
 
     val = CocoDetection('/data/datasets/coco/images/val2017', 
                                 '/data/datasets/coco/annotations/instances_val2017.json',

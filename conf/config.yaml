@@ -1,3 +1,4 @@
 batch_size: 4
 fp16: False
 workers: 4
+channel_last: False

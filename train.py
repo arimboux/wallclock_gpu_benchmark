@@ -36,6 +36,9 @@ def main(cfg):
     if torch.cuda.is_available():
         model = model.cuda()
 
+    if cfg.channel_last:
+        model = model.to(memory_format=torch.channels_last)
+
     scaler = torch.cuda.amp.GradScaler(enabled=cfg.fp16)
 
     model.train()
@@ -47,6 +50,9 @@ def main(cfg):
             x = [img.cuda(non_blocking=True) for img in x]
             target = [{k: v.cuda(non_blocking=True) for k, v in t.items()}
                     for t in target]
+
+        if cfg.channel_last:
+            x = torch.stack(x).to(memory_format=torch.channels_last)
 
         with torch.cuda.amp.autocast(enabled=cfg.fp16):
             #  Forward input and target
