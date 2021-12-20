@@ -53,7 +53,11 @@ def get_targets(annot, shapes):
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg):
 
-    model = torchvision.models.detection.maskrcnn_resnet50_fpn()
+    if cfg.maskrcnn:
+        model = torchvision.models.detection.maskrcnn_resnet50_fpn()
+    else:
+        model = torchvision.models.detection.fasterrcnn_resnet50_fpn()
+    
     train_loader, val_loader = get_dataloaders(cfg)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-4, weight_decay=0.)
