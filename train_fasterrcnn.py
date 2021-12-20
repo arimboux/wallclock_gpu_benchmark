@@ -78,12 +78,18 @@ def train_fasterrcnn(cfg):
             scaler.update()
 
     model.eval()
-    for x, target in val_loader:
-        if torch.cuda.is_available():
-            x = [img.cuda(non_blocking=True) for img in x]
-            target = [{k: v.cuda(non_blocking=True) for k, v in t.items()}
-                      for t in target]
+    for x, annot in tqdm.tqdm(val_loader):
+        shapes = [img.shape for img in x]
 
-        #  Forward input and target
-        out = model(x)
-        print(out)
+        target = get_targets(annot, shapes)
+
+        x = [torchvision.transforms.functional.resize(i, (600, 600)) for i in x]
+        x = torch.stack(x)
+        x = x.to(device=torch.device('cuda'), memory_format=channels)
+
+        target = [{k: v.to(device=torch.device('cuda')) for k, v in t.items()}
+                  for t in target]
+
+        with torch.cuda.amp.autocast(enabled=cfg.fp16):
+            #  Forward input and target
+            loss_dict = model(x, target)

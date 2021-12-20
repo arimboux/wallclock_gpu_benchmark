@@ -120,4 +120,3 @@ def train_maskrcnn(cfg):
 
         #  Forward input and target
         out = model(x)
-        print(out)
