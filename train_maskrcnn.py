@@ -25,8 +25,6 @@ def get_targets(annot, shapes):
             x1, x2 = x1 * ratio_w, x2 * ratio_w
             y1, y2 = y1 * ratio_h, y2 * ratio_h
 
-            boxes.append([x1, y1, x2, y2])
-
             rles = maskUtils.frPyObjects(a['segmentation'], _shape[1], _shape[2])
             if not isinstance(rles, list):
                 rles = [rles]
@@ -35,7 +33,10 @@ def get_targets(annot, shapes):
             m = maskUtils.decode(rle)
 
             m = cv2.resize(m, (600, 600))
-            masks.append(m)
+
+            if x1 != x2 and y1 != y2:
+                boxes.append([x1, y1, x2, y2])
+                masks.append(m)
 
             # plt.imshow(m)
             # plt.show()

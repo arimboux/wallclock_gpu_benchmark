@@ -20,7 +20,9 @@ def get_targets(annot, shapes):
             x1, x2 = x1 * ratio_w, x2 * ratio_w
             y1, y2 = y1 * ratio_h, y2 * ratio_h
 
-            boxes.append([x1, y1, x2, y2])
+            if x1 != x2 and y1 != y2:
+
+                boxes.append([x1, y1, x2, y2])
 
         boxes = torch.tensor(boxes)
         labels = torch.tensor([a['category_id'] for a in _annot])
