@@ -1,54 +1,103 @@
+import numpy as np
+import os
+import pycocotools.mask as maskUtils
 import torch
 import torchvision
 
-from torchvision.datasets import CocoDetection
-import torchvision.transforms as T
+from PIL import Image
+from torchvision.datasets import VisionDataset
+
+from utils import _coco_remove_images_without_annotations
+from transforms import Resize, to_tensor
 
 
-def _coco_remove_images_without_annotations(dataset, cat_list=None):
-    def _has_only_empty_bbox(anno):
-        return all(any(o <= 1 for o in obj["bbox"][2:]) for obj in anno)
+class CocoDetection(VisionDataset):
+    """`MS Coco Detection <https://cocodataset.org/#detection-2016>`_ Dataset.
 
-    def _count_visible_keypoints(anno):
-        return sum(
-            sum(1 for v in ann["keypoints"][2::3] if v > 0) for ann in anno)
+    Args:
+        root (string): Root directory where images are downloaded to.
+        annFile (string): Path to json annotation file.
+        transform (callable, optional): A function/transform that  takes in an PIL image
+            and returns a transformed version. E.g, ``transforms.ToTensor``
+        target_transform (callable, optional): A function/transform that takes in the
+            target and transforms it.
+        transforms (callable, optional): A function/transform that takes input sample and its target as entry
+            and returns a transformed version.
+    """
 
-    min_keypoints_per_image = 10
+    def __init__(
+        self,
+        root,
+        annFile,
+        transform=None,
+        target_transform=None,
+        transforms=None,
+        return_mask=False,
+    ):
+        super().__init__(root, transforms, transform, target_transform)
+        from pycocotools.coco import COCO
 
-    def _has_valid_annotation(anno):
-        # if it's empty, there is no annotation
-        if len(anno) == 0:
-            return False
-        # if all boxes have close to zero area, there is no annotation
-        if _has_only_empty_bbox(anno):
-            return False
-        # keypoints task have a slight different critera for considering
-        # if an annotation is valid
-        if "keypoints" not in anno[0]:
-            return True
-        # for keypoint detection tasks, only consider valid images those
-        # containing at least min_keypoints_per_image
-        if _count_visible_keypoints(anno) >= min_keypoints_per_image:
-            return True
-        return False
+        self.coco = COCO(annFile)
+        self.ids = list(sorted(self.coco.imgs.keys()))
+        self.return_mask = return_mask
 
-    assert isinstance(dataset, torchvision.datasets.CocoDetection)
-    ids = []
-    for ds_idx, img_id in enumerate(dataset.ids):
-        ann_ids = dataset.coco.getAnnIds(imgIds=img_id, iscrowd=None)
-        anno = dataset.coco.loadAnns(ann_ids)
-        if cat_list:
-            anno = [obj for obj in anno if obj["category_id"] in cat_list]
-        if _has_valid_annotation(anno):
-            ids.append(ds_idx)
+    def _load_image(self, id):
+        path = self.coco.loadImgs(id)[0]["file_name"]
+        # return Image.open(os.path.join(self.root, path)).convert("RGB")
+        return torchvision.io.read_image(os.path.join(self.root, path), torchvision.io.image.ImageReadMode.RGB) / 255.
 
-    dataset = torch.utils.data.Subset(dataset, ids)
-    return dataset
+    def _load_target(self, id, image_shape, resize_target=600):
+        anns = self.coco.loadAnns(self.coco.getAnnIds(id))
+
+        target = dict()
+        boxes = []
+        masks = []
+        labels = []
+
+        for ann in anns:
+            x1, y1, w, h = ann['bbox']
+            x2, y2 = x1 + w, y1 + h
+
+            if x1 != x2 and y1 != y2:
+                boxes.append([x1, y1, x2, y2])
+                labels.append(ann['category_id'])
+                if self.return_mask:
+                    rles = maskUtils.frPyObjects(ann['segmentation'], image_shape[1], image_shape[2])
+                    if not isinstance(rles, list):
+                        rles = [rles]
+
+                    rle = maskUtils.merge(rles)
+                    m = maskUtils.decode(rle)
+                    masks.append(m)
+
+        target['labels'] = np.array(labels)
+        target['boxes'] = np.array(boxes)
+        if self.return_mask:
+            target['masks'] = np.array(masks)
+
+        return target
+
+    def __getitem__(self, index):
+        id = self.ids[index]
+        image = self._load_image(id)
+        target = self._load_target(id, image.shape)
+
+        image, target = to_tensor(image, target)
+        if self.transforms is not None:
+            image, target = self.transforms(image, target)
+
+        return image, target
+
+    def __len__(self):
+        return len(self.ids)
 
 
 # collate_fn needs for batch
 def collate_fn(batch):
-    return tuple(zip(*batch))
+    list_batch = list(zip(*batch))
+    list_batch[0] = torch.stack(list_batch[0])
+
+    return tuple(list_batch)
 
 
 def get_dataloaders(cfg):
@@ -56,17 +105,21 @@ def get_dataloaders(cfg):
     train = CocoDetection(
         '/data/datasets/coco/images/train2017',
         '/data/datasets/coco/annotations/instances_train2017.json',
-        transform=T.ToTensor()
+        transforms=Resize((600, 600))
     )
 
     val = CocoDetection(
         '/data/datasets/coco/images/val2017',
         '/data/datasets/coco/annotations/instances_val2017.json',
-        transform=T.ToTensor()
+        transforms=Resize((600, 600))
     )
 
     train = _coco_remove_images_without_annotations(train)
     val = _coco_remove_images_without_annotations(val)
+
+    if cfg.sample_size is not None:
+        train = [train[i] for i in range(cfg.sample_size)]
+        val = [val[i] for i in range(int(cfg.sample_size * 0.1))]
 
     train_dataloader = torch.utils.data.DataLoader(
         train,
