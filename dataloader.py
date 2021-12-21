@@ -33,12 +33,15 @@ class CocoDetection(VisionDataset):
         target_transform=None,
         transforms=None,
         return_mask=False,
+        sample_size=None
     ):
         super().__init__(root, transforms, transform, target_transform)
         from pycocotools.coco import COCO
 
         self.coco = COCO(annFile)
         self.ids = list(sorted(self.coco.imgs.keys()))
+        if sample_size is not None:
+            self.ids = self.ids[:sample_size]
         self.return_mask = return_mask
 
     def _load_image(self, id):
@@ -105,22 +108,22 @@ def get_dataloaders(cfg):
     train = CocoDetection(
         '/data/datasets/coco/images/train2017',
         '/data/datasets/coco/annotations/instances_train2017.json',
-        transforms=Resize((600, 600))
+        transforms=Resize((600, 600)),
+        return_mask=cfg.maskrcnn,
+        sample_size=cfg.sample_size
     )
 
     val = CocoDetection(
         '/data/datasets/coco/images/val2017',
         '/data/datasets/coco/annotations/instances_val2017.json',
-        transforms=Resize((600, 600))
+        transforms=Resize((600, 600)),
+        return_mask=cfg.maskrcnn,
+        sample_size=int(cfg.sample_size * 0.1)
     )
 
     train = _coco_remove_images_without_annotations(train)
     val = _coco_remove_images_without_annotations(val)
-
-    if cfg.sample_size is not None:
-        train = [train[i] for i in range(cfg.sample_size)]
-        val = [val[i] for i in range(int(cfg.sample_size * 0.1))]
-
+    
     train_dataloader = torch.utils.data.DataLoader(
         train,
         batch_size=cfg.batch_size,

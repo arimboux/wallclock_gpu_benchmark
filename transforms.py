@@ -1,10 +1,13 @@
 import numpy as np
 import torch
+import torchvision
 import torchvision.transforms.transforms as transforms
 
 
 class Resize(transforms.Resize):
-    def __init__(self, size, interpolation=2):
+    def __init__(self,
+                 size,
+                 interpolation=torchvision.transforms.functional.InterpolationMode.BILINEAR):
 
         super().__init__(size, interpolation)
 
@@ -23,7 +26,9 @@ class Resize(transforms.Resize):
         target['boxes'][:, [-3, -1]] *= actual_size[0] / image.shape[2]
 
         if 'masks' in target:
-            print('not_implemented')
+            target['masks'] = torch.nn.functional.interpolate(
+                target['masks'].unsqueeze(1), size=self.size
+            ).squeeze(1)
 
         # Resize image
         image = super(Resize, self).__call__(image)
