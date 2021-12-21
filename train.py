@@ -56,7 +56,7 @@ def main(cfg):
 
     model.eval()
     for x, target in tqdm.tqdm(val_loader):
-
+        x = x.to(device=torch.device('cuda'), memory_format=channels)
         target = [{k: v.to(device=torch.device('cuda')) for k, v in t.items()}
                   for t in target]
 
