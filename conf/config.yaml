@@ -4,3 +4,4 @@ workers: 4
 channel_last: False
 maskrcnn: False
 sample_size: 10000
+profiler: False
