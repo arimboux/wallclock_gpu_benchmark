@@ -123,13 +123,14 @@ def get_dataloaders(cfg):
 
     train = _coco_remove_images_without_annotations(train)
     val = _coco_remove_images_without_annotations(val)
-    
+
     train_dataloader = torch.utils.data.DataLoader(
         train,
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.workers,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        pin_memory=True
     )
 
     val_dataloader = torch.utils.data.DataLoader(
@@ -137,7 +138,8 @@ def get_dataloaders(cfg):
         batch_size=cfg.batch_size,
         shuffle=False,
         num_workers=cfg.workers,
-        collate_fn=collate_fn
+        collate_fn=collate_fn,
+        pin_memory=True
     )
 
     return train_dataloader, val_dataloader
