@@ -11,6 +11,34 @@ from datetime import timedelta
 from dataloader import get_dataloaders
 
 
+def train(cfg, model, train_loader, channels, optimizer, scaler, prof=None):
+    for x, target in tqdm.tqdm(train_loader):
+        x = x.to(device=torch.device('cuda'), memory_format=channels)
+        target = [{k: v.to(device=torch.device('cuda')) for k, v in t.items()}
+                  for t in target]
+
+        with torch.cuda.amp.autocast(enabled=cfg.fp16):
+            #  Forward input and target
+            loss_dict = model(x, target)
+
+        # Reduce the loss (objectness, rpn_box_reg, classifier, box_reg)
+        batch_loss = sum(loss for loss in loss_dict.values()
+                         if not torch.isnan(loss) and loss != float("Inf"))
+
+        # Check for non-defined or exploding losses
+        if (
+            (not math.isnan(batch_loss.item()))
+            and (not math.isinf(batch_loss.item()))
+        ):
+            # Backprop
+            optimizer.zero_grad()
+            scaler.scale(batch_loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            if prof is not None:
+                prof.step()
+
+
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg):
 
@@ -45,31 +73,11 @@ def main(cfg):
             profile_memory=False
         )
 
-    with profiler as prof:
-        for x, target in tqdm.tqdm(train_loader):
-            x = x.to(device=torch.device('cuda'), memory_format=channels)
-            target = [{k: v.to(device=torch.device('cuda')) for k, v in t.items()}
-                      for t in target]
-
-            with torch.cuda.amp.autocast(enabled=cfg.fp16):
-                #  Forward input and target
-                loss_dict = model(x, target)
-
-            # Reduce the loss (objectness, rpn_box_reg, classifier, box_reg)
-            batch_loss = sum(loss for loss in loss_dict.values()
-                             if not torch.isnan(loss) and loss != float("Inf"))
-
-            # Check for non-defined or exploding losses
-            if (
-                (not math.isnan(batch_loss.item()))
-                and (not math.isinf(batch_loss.item()))
-            ):
-                # Backprop
-                optimizer.zero_grad()
-                scaler.scale(batch_loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-                prof.step()
+    if profiler is not None:
+        with profiler as prof:
+            train(cfg, model, train_loader, channels, optimizer, scaler, prof=prof)
+    else:
+        train(cfg, model, train_loader, channels, optimizer, scaler)
 
     model.eval()
     for x, target in tqdm.tqdm(val_loader):
